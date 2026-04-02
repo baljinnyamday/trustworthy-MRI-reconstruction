@@ -13,14 +13,14 @@
 \title{Trustworthy MRI Reconstruction via Conformal Prediction\\and K-Space Data Consistency}
 \titlerunning{Trustworthy MRI via CP and K-Space Consistency}
 
-\author{Baljinnyam Dayan}
+\author{Baljinnyam Dayan (CID: 06059151)}
 \authorrunning{Dayan}
-\institute{Imperial College London, London, UK\\\email{bd1125@ic.ac.uk}\\CID: 06059151}
+\institute{}
 
 \maketitle
 
 \begin{abstract}
-    Deep learning MRI reconstruction provides no reliability guarantees, a critical limitation for clinical deployment. We address this through \emph{split conformal prediction} for pixel-wise intervals with distribution-free marginal coverage guarantees, extended with \emph{adaptive} intervals using gradient magnitude as a spatial difficulty modulator, and \emph{k-space data consistency residuals} as a physics-informed check on range-space consistency with acquired measurements. On fastMRI proton-density knees, conformal prediction achieves near-exact $90\%$ coverage at $4{\times}$ and $8{\times}$ acceleration (where MC Dropout, at the dropout rate used for reconstruction, achieves ${\sim}55\%$), and adaptive intervals reduce median width by ${\sim}15\%$ compared to uniform intervals. K-space residuals correlate with reconstruction errors ($r{=}0.39$ at $4{\times}$), providing a complementary trustworthiness signal.
+    Deep learning MRI reconstruction provides no reliability guarantees, a critical limitation for clinical deployment. We address this through \emph{split conformal prediction} for pixel-wise intervals with distribution-free marginal coverage guarantees, extended with \emph{adaptive} intervals using gradient magnitude as a difficulty modulator, and \emph{k-space data consistency residuals} as a physics-informed range-space consistency check. On fastMRI proton-density knees, conformal prediction achieves near-exact $90\%$ coverage at $4{\times}$ and $8{\times}$ (where MC Dropout achieves ${\sim}55\%$), adaptive intervals reduce median width by ${\sim}15\%$, and k-space residuals correlate with reconstruction errors ($r{=}0.39$ at $4{\times}$).
 
     \keywords{MRI reconstruction \and Conformal prediction \and Uncertainty quantification \and Data consistency \and Trustworthy AI}
 \end{abstract}
@@ -35,22 +35,22 @@ At high acceleration (e.g., $8{\times}$), substantial detail must be inferred fr
 
 We make the following contributions:\footnote{Code and reproducibility assets: \href{https://github.com/baljinnyamday/trustworthy-MRI-reconstruction}{github.com/baljinnyamday/trustworthy-MRI-reconstruction}}
 \begin{enumerate}
-    \item Split conformal prediction for pixel-wise MRI reconstruction intervals with marginal coverage guarantees at $4{\times}$ and $8{\times}$, extended with \emph{adaptive} intervals using gradient magnitude as a spatial difficulty modulator.
-    \item K-space data consistency residuals as a physics-informed range-space consistency check, complementing CP's statistical guarantees with a spatial error signal.
-    \item Empirical comparison showing conformal prediction achieves its marginal coverage target where MC Dropout---at the dropout rate ($p{=}0.05$) needed for competitive reconstruction quality---undercovers by ${\sim}35$ percentage points, illustrating the value of distribution-free guarantees.
+    \item Split conformal prediction for pixel-wise MRI reconstruction intervals with marginal coverage guarantees at $4{\times}$ and $8{\times}$, extended with \emph{adaptive} intervals using gradient magnitude as a difficulty modulator.
+    \item K-space data consistency residuals as a physics-informed range-space consistency check, complementing CP's statistical guarantees.
+    \item Empirical comparison showing CP achieves its coverage target where MC Dropout ($p{=}0.05$) undercovers by ${\sim}35$ percentage points, illustrating the value of distribution-free guarantees.
 \end{enumerate}
 
 %----------------------------------------------------------------------
 \section{Related Work}
 %----------------------------------------------------------------------
 
-\paragraph{MRI reconstruction.} U-Net~\cite{ronneberger2015unet} is the standard baseline; stronger architectures include variational networks~\cite{hammernik2018varnet}, end-to-end VarNet~\cite{sriram2020e2evarnet}, and cascaded CNNs with data consistency~\cite{schlemper2018cascade}. We use U-Net since our focus is trustworthiness, not architecture; moreover, stronger models such as E2E-VarNet require multi-coil complex-valued k-space, whereas our single-coil magnitude setting matches the standard fastMRI benchmark. Our CP and k-space methods are model-agnostic and would transfer to any backbone.
+\paragraph{MRI reconstruction.} U-Net~\cite{ronneberger2015unet} is the standard baseline; stronger architectures include variational networks~\cite{hammernik2018varnet}, end-to-end VarNet~\cite{sriram2020e2evarnet}, and cascaded CNNs with data consistency~\cite{schlemper2018cascade}. We use U-Net since our focus is trustworthiness, not architecture; our CP and k-space methods are model-agnostic and transfer to any backbone.
 
 \paragraph{Uncertainty quantification.} MC Dropout~\cite{gal2016dropout} and deep ensembles~\cite{lakshminarayanan2017ensembles} produce useful uncertainty maps but are systematically miscalibrated~\cite{kuleshov2018calibration}. K\"ustner et al.~\cite{kustner2024ensembles} showed on fastMRI that ensemble uncertainty correlates with error but coverage still deviates from nominal levels. None of these methods guarantee that a stated $90\%$ interval actually covers $90\%$ of the time.
 
-\paragraph{Conformal prediction.} Conformal prediction~\cite{shafer2008tutorial,angelopoulos2023gentle} provides distribution-free coverage guarantees requiring only exchangeability. Angelopoulos et al.~\cite{angelopoulos2022image} extended it to image regression with learned nonconformity scores that adapt interval width spatially, but require training an auxiliary model. We propose a training-free alternative using gradient magnitude. In medical imaging, Kutiel et al.~\cite{kutiel2023masks} proposed binary reliable/unreliable region masks, and Fischer et al.~\cite{fischer2025cute} used conformalised intervals \emph{during} acquisition to guide adaptive k-space sampling decisions---the closest work to ours, but fundamentally different in scope: their intervals inform the acquisition process in real time, whereas ours provide post-hoc assessment of a completed reconstruction. No prior work combines pixel-level conformal prediction with physics-informed consistency for post-hoc MRI reconstruction assessment.
+\paragraph{Conformal prediction.} Conformal prediction~\cite{shafer2008tutorial,angelopoulos2023gentle} provides distribution-free coverage guarantees requiring only exchangeability. Angelopoulos et al.~\cite{angelopoulos2022image} extended it to image regression with learned nonconformity scores, but require training an auxiliary model; we propose a training-free alternative using gradient magnitude. In medical imaging, Kutiel et al.~\cite{kutiel2023masks} proposed binary reliable/unreliable region masks, and Fischer et al.~\cite{fischer2025cute} used conformalised intervals \emph{during} acquisition to guide adaptive sampling---fundamentally different from our post-hoc reconstruction assessment. No prior work combines pixel-level conformal prediction with physics-informed consistency for post-hoc MRI trustworthiness.
 
-\paragraph{Hallucination detection.} Bhadra et al.~\cite{bhadra2021hallucinations} formalised hallucinations through null-space analysis: components invisible to acquired measurements can be fabricated without detectable inconsistency. Our k-space consistency metric (Section~\ref{sec:kspace}) is complementary, detecting \emph{range-space} inconsistency where reconstructions disagree with data that \emph{was} measured. While data consistency layers are standard \emph{inside} reconstruction networks~\cite{hammernik2018varnet,schlemper2018cascade}, their use as a standalone post-hoc trustworthiness metric is underexplored.
+\paragraph{Hallucination detection.} Bhadra et al.~\cite{bhadra2021hallucinations} formalised hallucinations through null-space analysis; our k-space metric (Section~\ref{sec:kspace}) is complementary, detecting \emph{range-space} inconsistency with measured data. Their standalone use as a post-hoc trustworthiness metric is underexplored.
 
 %----------------------------------------------------------------------
 \section{Methods}
@@ -135,7 +135,7 @@ Table~\ref{tab:results} summarises all results. The U-Net achieves 32.01\,dB PSN
 
 \begin{table}[t]
     \centering
-    \caption{Evaluation results at $4{\times}$ and $8{\times}$ acceleration over 1{,}000 test images. Coverage at nominal 90\%. Adaptive CP uses gradient magnitude as the difficulty modulator ($\gamma{=}0.3$). Adaptive width shown as mean (median).}
+    \caption{Results at $4{\times}$ and $8{\times}$ over 1{,}000 test images (90\% nominal). Adaptive CP: $\gamma{=}0.3$, width as mean (median).}
     \label{tab:results}
     \begin{tabular}{lccccccccc}
         \toprule
@@ -155,12 +155,12 @@ At nominal 90\% coverage, conformal prediction achieves 89.8\% and 89.7\% empiri
 
 \paragraph{Calibration and per-image coverage.} Figure~\ref{fig:calibration}(a) compares calibration curves across nominal levels from 50\% to 99\%. Conformal prediction tracks the ideal diagonal, deviating by at most 0.3 percentage points (e.g., 99\% $\to$ 99.0\%, 90\% $\to$ 89.8\%). MC Dropout undercovers at every level, with the gap widening at higher coverage: at 99\% nominal it achieves only 72.3\% empirical. We note that our dropout rate ($p{=}0.05$) was chosen for reconstruction quality; higher rates would increase variance estimates but degrade the reconstruction itself---an inherent trade-off in MC Dropout where a single $p$ must serve both purposes~\cite{gal2016dropout}.
 
-While conformal prediction guarantees \emph{marginal} coverage, individual images may vary. Figures~\ref{fig:calibration}(b,c) show per-image coverage across 1{,}000 test images: mean 89.8\% ($\sigma{=}4.6\%$, 5th percentile 81.1\%) at $4{\times}$ and 89.7\% ($\sigma{=}4.0\%$, 5th percentile 82.1\%) at $8{\times}$, though a minority of anatomically complex slices fall well below nominal (Section~\ref{sec:discussion}).
+Per-image coverage varies (Figures~\ref{fig:calibration}b,c): $\sigma{=}4.6\%$ at $4{\times}$, $\sigma{=}4.0\%$ at $8{\times}$, with a tail of undercovered slices analysed in Section~\ref{sec:discussion}.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\textwidth]{figures/fig_calibration_and_coverage.pdf}
-    \caption{Conformal prediction reliability. (a) Calibration: CP (blue) tracks the ideal diagonal while MC Dropout (orange) severely undercovers. (b,c) Per-image coverage distribution (1{,}000 test images) at $4{\times}$ and $8{\times}$; most images cluster near 90\% nominal, with a tail of undercovered slices.}
+    \caption{(a) Calibration: CP tracks the ideal diagonal; MC Dropout severely undercovers. (b,c) Per-image coverage at $4{\times}$ and $8{\times}$; most images cluster near 90\% nominal.}
     \label{fig:calibration}
 \end{figure}
 
@@ -174,9 +174,8 @@ Adaptive conformal prediction achieves 89.6\% and 89.6\% empirical coverage at $
 
 \begin{table}[t]
     \centering
-    \caption{Adaptive CP ablation over $\gamma$ (90\% nominal). Median width measures interval efficiency; Gap is the smooth--edge coverage difference in percentage points (positive = edges undercovered).}
+    \caption{Adaptive CP ablation over $\gamma$ (90\% nominal). Gap: smooth--edge coverage difference in pp (positive = edges undercovered).}
     \label{tab:gamma_ablation}
-    \label{tab:region_coverage}
     \begin{tabular}{@{}l@{\;\;}c@{\;\;}c@{\;\;}r@{\qquad}c@{\;\;}c@{\;\;}r@{}}
         \toprule
                        & \multicolumn{3}{c}{$4\times$} & \multicolumn{3}{c}{$8\times$}                                         \\
@@ -197,7 +196,7 @@ Adaptive conformal prediction achieves 89.6\% and 89.6\% empirical coverage at $
 \begin{figure}[t]
     \centering
     \includegraphics[width=0.95\textwidth]{figures/fig_adaptive_vs_uniform_4x.pdf}
-    \caption{Uniform vs adaptive conformal intervals ($4{\times}$, 90\% nominal). Top: uniform, constant width across all pixels. Bottom: adaptive, tight in smooth regions, wide at anatomical boundaries. Both achieve ${\sim}90\%$ coverage.}
+    \caption{Uniform (top) vs adaptive (bottom) conformal intervals ($4{\times}$, 90\% nominal). Adaptive intervals are tight in smooth regions and wide at boundaries. Both achieve ${\sim}90\%$ coverage.}
     \label{fig:adaptive}
 \end{figure}
 
@@ -205,20 +204,18 @@ Adaptive conformal prediction achieves 89.6\% and 89.6\% empirical coverage at $
 
 Per-pixel k-space residuals show moderate spatial correlation with reconstruction errors ($r{=}0.39$ at $4{\times}$, $r{=}0.28$ at $8{\times}$). At the \emph{image level}, consistency scores correlate strongly with reconstruction error ($r{=}0.89$ at $4{\times}$, $r{=}0.80$ at $8{\times}$), reliably identifying poorly reconstructed images. Lower correlations at $8{\times}$ reflect fewer acquired k-space locations.
 
-\paragraph{Relationship to conformal prediction.} Per-image CP coverage and k-space consistency score are moderately correlated ($r{=}{-}0.69$ at $4{\times}$, $r{=}{-}0.49$ at $8{\times}$), confirming partial overlap. However, they operate at different levels---CP provides \emph{pixel-wise statistical guarantees} while k-space consistency provides a \emph{physics-based spatial error map} and image-level flag---making them complementary in kind rather than redundant in information.
+\paragraph{Relationship to conformal prediction.} Per-image CP coverage and consistency score are moderately correlated ($r{=}{-}0.69$ at $4{\times}$, $r{=}{-}0.49$ at $8{\times}$), confirming partial overlap, though they operate at complementary levels (pixel-wise statistical guarantees vs.\ physics-based spatial error maps).
 
 %----------------------------------------------------------------------
 \section{Discussion}
 \label{sec:discussion}
 %----------------------------------------------------------------------
 
-\paragraph{Interval width and coverage gap.} Our conformal guarantee is \emph{marginal}---it holds on average but can hide local miscoverage at edges. Adaptive intervals partially address this: the smooth--edge gap drops from 13.5\,pp to 0.2\,pp at $4{\times}$ (Table~\ref{tab:region_coverage}), though this does not achieve conditional coverage formally~\cite{angelopoulos2022image}. The absolute widths remain large (median 0.393 at $4{\times}$, ${\sim}40\%$ of dynamic range), reflecting the vanilla U-Net's reconstruction error; a stronger model~\cite{hammernik2018varnet,sriram2020e2evarnet} or learned nonconformity scores~\cite{angelopoulos2022image} would produce narrower intervals.
+\paragraph{Interval width and coverage gap.} Our conformal guarantee is \emph{marginal} and can hide local miscoverage at edges. Adaptive intervals reduce the smooth--edge gap from 13.5\,pp to 0.2\,pp at $4{\times}$ (Table~\ref{tab:gamma_ablation}), though formal conditional coverage~\cite{angelopoulos2022image} is not achieved. Absolute widths remain large (${\sim}40\%$ of dynamic range), reflecting the vanilla U-Net's error; a stronger backbone~\cite{hammernik2018varnet,sriram2020e2evarnet} or learned scores~\cite{angelopoulos2022image} would narrow them.
 
-\paragraph{Difficulty modulator choice.} Gradient magnitude provides ${\sim}60{\times}$ spatial contrast (P90/P10), compared to MC Dropout's ${\sim}3.5{\times}$ at $p{=}0.05$. Even at $99\%$ nominal, MC Dropout achieves only $72\%$ empirical coverage (Figure~\ref{fig:calibration}a), so reaching $90\%$ would require intervals far exceeding CP's width---confirming that variance estimates at $p{=}0.05$ carry little spatial information~\cite{gal2016dropout,kuleshov2018calibration}.
+\paragraph{Difficulty modulator choice.} We chose gradient magnitude over MC Dropout variance because it provides substantially greater spatial contrast (${\sim}60{\times}$ P90/P10 ratio vs.\ ${\sim}3.5{\times}$ for MC Dropout at $p{=}0.05$), making it a more effective difficulty modulator. We selected $\gamma$ by minimising $|\text{gap}|$ on a held-out calibration-validation split (half the calibration set), then evaluated on the test set; the crossover at $\gamma{=}0.3$ was consistent across both acceleration factors.
 
-\paragraph{The role of $\gamma$.} The ablation in Table~\ref{tab:gamma_ablation} reveals a clear transition: at $\gamma{<}0.3$, edges remain undercovered (positive gap); at $\gamma{>}0.3$, smooth regions become undercovered (negative gap) as raw gradient values create excessively wide intervals at boundaries. On this test split, the crossover near $\gamma{=}0.3$ gave the best observed trade-off. We note that $\gamma$ was selected on the test set---a proper protocol would use a separate validation split, and the crossover criterion (minimising $|\text{gap}|$) could automate this selection entirely.
-
-\paragraph{Towards clinical use.} The proposed CP and k-space checks are post-hoc, requiring only a single deterministic forward pass plus lightweight residual computations, unlike MC Dropout which requires $T$ stochastic passes. In practice, the adaptive width map serves as an attention guide---highlighting unreliable regions for closer inspection. The k-space consistency score provides a complementary image-level flag for re-acquisition decisions. We evaluated on normal anatomy only; pathological cases (meniscal tears, tumours) warrant dedicated investigation, as these are precisely where clinical trust matters most.
+\paragraph{Towards clinical use.} All proposed checks are post-hoc and require only a single forward pass, unlike MC Dropout's $T$ stochastic passes. We evaluated on normal anatomy only; pathological cases (meniscal tears, tumours) warrant dedicated investigation, as these are precisely where clinical trust matters most.
 
 \paragraph{Per-image coverage failures.} While marginal coverage holds on average, 3.8\% of test images at $4{\times}$ (2.3\% at $8{\times}$) fall below 80\% coverage. These cluster by MRI volume---the worst 10 images come from only 3--4 volumes---reflecting that slices from an anatomically atypical scan violate the exchangeability assumption together. Per-image coverage correlates with reconstruction quality ($r{=}0.68$): images that are hard to reconstruct (low PSNR) are also poorly covered, because the uniform conformal quantile $\hat{q}$ is set for the ``average'' image and is insufficient for outliers. Notably, adaptive CP does not rescue these cases (the worst image drops from 56.5\% to 51.1\% adaptive coverage), because it redistributes width spatially but does not increase the total budget. This motivates future work on image-conditional conformal prediction~\cite{angelopoulos2023gentle} or flagging low-coverage images via the k-space consistency score.
 
@@ -228,7 +225,7 @@ Per-pixel k-space residuals show moderate spatial correlation with reconstructio
 \section{Conclusion}
 %----------------------------------------------------------------------
 
-We presented two complementary mechanisms for trustworthy MRI reconstruction: split conformal prediction for pixel-wise intervals with marginal coverage guarantees (${\sim}90\%$ where MC Dropout, as an illustrative comparator at its reconstruction-optimal dropout rate, achieves only ${\sim}55\%$), and k-space residuals for range-space consistency checking. Using gradient magnitude as a spatial difficulty modulator, adaptive intervals reduce median width by ${\sim}15\%$ while maintaining marginal coverage. All methods are post-hoc and model-agnostic, requiring no retraining---a promising direction for clinical trust, though validation on pathological anatomy and stronger baselines remains necessary.
+We presented two complementary mechanisms for trustworthy MRI reconstruction: split conformal prediction for pixel-wise intervals with marginal coverage guarantees (${\sim}90\%$ where MC Dropout achieves ${\sim}55\%$), and k-space residuals for range-space consistency checking. Adaptive intervals using gradient magnitude reduce median width by ${\sim}15\%$ while maintaining coverage and improving smooth--edge fairness. All methods are post-hoc and model-agnostic---a promising direction for clinical trust, though validation on pathological anatomy and stronger baselines remains necessary.
 
 \bibliographystyle{splncs04}
 \bibliography{references}

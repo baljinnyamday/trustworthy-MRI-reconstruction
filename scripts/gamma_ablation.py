@@ -192,6 +192,36 @@ def auto_device() -> str:
     return "cpu"
 
 
+def select_gamma_on_cal(
+    cal_fit_preds: np.ndarray,
+    cal_fit_targets: np.ndarray,
+    cal_val_preds: np.ndarray,
+    cal_val_targets: np.ndarray,
+    gammas: list[float],
+) -> tuple[float, dict[str, dict[str, float]]]:
+    """Select best γ using calibration data only (no test set peeking).
+
+    Fits q_hat on cal_fit, evaluates gap on cal_val, picks γ with smallest |gap|.
+
+    Returns:
+        (best_gamma, {gamma_key: metrics_dict} for all gammas evaluated on cal_val)
+    """
+    cal_val_edge_mask = compute_edge_mask(cal_val_preds)
+    results: dict[str, dict[str, float]] = {}
+
+    for gamma in gammas:
+        r = evaluate_gamma(
+            cal_fit_preds, cal_fit_targets,
+            cal_val_preds, cal_val_targets,
+            gamma, cal_val_edge_mask,
+        )
+        results[f"gamma_{gamma}"] = r
+
+    # Pick γ with smallest absolute gap
+    best_gamma = min(gammas, key=lambda g: abs(results[f"gamma_{g}"]["gap"]))
+    return best_gamma, results
+
+
 def main() -> None:
     device_str = auto_device()
     device = torch.device(device_str)
@@ -199,6 +229,7 @@ def main() -> None:
 
     data_root = Path("dataset/fastmri_pd")
     results: dict[int, dict[str, dict[str, float]]] = {}
+    chosen_gammas: dict[int, float] = {}
 
     for acc, ckpt in [(4, "best_4x.pt"), (8, "best_8x.pt")]:
         print(f"\n{'='*60}")
@@ -207,50 +238,98 @@ def main() -> None:
 
         model = load_model(Path(f"outputs/checkpoints/{ckpt}"), device)
 
+        # Three-way split: cal_fit | cal_val | test
         val_paths = get_file_paths(data_root / "val" / "h5")
         cal_paths, test_paths = split_by_volume(val_paths, seed=SEED)
-        print(f"Cal: {len(cal_paths)} files | Test: {len(test_paths)} files")
+        cal_fit_paths, cal_val_paths = split_by_volume(
+            cal_paths, seed=SEED + 1, cal_fraction=0.5,
+        )
+        print(
+            f"Cal-fit: {len(cal_fit_paths)} | "
+            f"Cal-val: {len(cal_val_paths)} | "
+            f"Test: {len(test_paths)} files"
+        )
 
-        cal_ds = FastMRIDataset(cal_paths, acc, 0.08, SEED)
+        cal_fit_ds = FastMRIDataset(cal_fit_paths, acc, 0.08, SEED)
+        cal_val_ds = FastMRIDataset(cal_val_paths, acc, 0.08, SEED)
         test_ds = FastMRIDataset(test_paths, acc, 0.08, SEED)
-        cal_loader = DataLoader(cal_ds, batch_size=16, num_workers=2)
+        cal_fit_loader = DataLoader(cal_fit_ds, batch_size=16, num_workers=2)
+        cal_val_loader = DataLoader(cal_val_ds, batch_size=16, num_workers=2)
         test_loader = DataLoader(test_ds, batch_size=16, num_workers=2)
 
-        print("  Collecting calibration predictions...")
-        cal_preds, cal_targets = collect_preds_and_targets(model, cal_loader, device)
-        print(f"  Cal: {cal_preds.shape[0]} images")
+        print("  Collecting cal-fit predictions...")
+        cal_fit_preds, cal_fit_targets = collect_preds_and_targets(
+            model, cal_fit_loader, device,
+        )
+        print(f"  Cal-fit: {cal_fit_preds.shape[0]} images")
+
+        print("  Collecting cal-val predictions...")
+        cal_val_preds, cal_val_targets = collect_preds_and_targets(
+            model, cal_val_loader, device,
+        )
+        print(f"  Cal-val: {cal_val_preds.shape[0]} images")
 
         print("  Collecting test predictions...")
-        test_preds, test_targets = collect_preds_and_targets(model, test_loader, device)
+        test_preds, test_targets = collect_preds_and_targets(
+            model, test_loader, device,
+        )
         print(f"  Test: {test_preds.shape[0]} images")
 
-        # Edge mask based on test reconstructions
-        print("  Computing edge masks...")
-        edge_mask = compute_edge_mask(test_preds)
-        edge_frac = edge_mask.mean()
-        print(f"  Edge fraction: {edge_frac:.1%}")
+        # --- Step 1: Select γ on calibration data only ---
+        print("  Selecting γ on cal-val split...")
+        best_gamma, cal_val_results = select_gamma_on_cal(
+            cal_fit_preds, cal_fit_targets,
+            cal_val_preds, cal_val_targets,
+            GAMMA_VALUES,
+        )
+        chosen_gammas[acc] = best_gamma
+        print(f"  >>> Selected γ={best_gamma} (smallest |gap| on cal-val)")
+
+        for gamma in GAMMA_VALUES:
+            r = cal_val_results[f"gamma_{gamma}"]
+            marker = " <<<" if gamma == best_gamma else ""
+            print(
+                f"    γ={gamma}: cov={r['coverage']:.4f} "
+                f"gap={r['gap']*100:+.1f}pp{marker}"
+            )
+
+        # --- Step 2: Final test evaluation (full cal for q_hat) ---
+        # Recombine cal_fit + cal_val for maximum calibration power
+        full_cal_preds = np.concatenate([cal_fit_preds, cal_val_preds])
+        full_cal_targets = np.concatenate([cal_fit_targets, cal_val_targets])
+
+        test_edge_mask = compute_edge_mask(test_preds)
+        print(f"  Edge fraction: {test_edge_mask.mean():.1%}")
+
+        acc_results: dict[str, dict[str, float]] = {}
 
         # Uniform baseline
-        print("  Evaluating uniform CP...")
-        acc_results: dict[str, dict[str, float]] = {}
+        print("  Evaluating uniform CP on test...")
         acc_results["uniform"] = evaluate_uniform(
-            cal_preds, cal_targets, test_preds, test_targets, edge_mask,
+            full_cal_preds, full_cal_targets, test_preds, test_targets,
+            test_edge_mask,
         )
         print(f"    Coverage: {acc_results['uniform']['coverage']:.4f}")
 
-        # Sweep γ
+        # All γ on test (for the ablation table)
         for gamma in GAMMA_VALUES:
-            print(f"  Evaluating γ={gamma}...")
+            print(f"  Evaluating γ={gamma} on test...")
             acc_results[f"gamma_{gamma}"] = evaluate_gamma(
-                cal_preds, cal_targets, test_preds, test_targets, gamma, edge_mask,
+                full_cal_preds, full_cal_targets, test_preds, test_targets,
+                gamma, test_edge_mask,
             )
             r = acc_results[f"gamma_{gamma}"]
-            print(f"    Coverage: {r['coverage']:.4f}  Mean: {r['mean_width']:.4f}  Median: {r['median_width']:.4f}")
+            marker = " <<<" if gamma == best_gamma else ""
+            print(
+                f"    Coverage: {r['coverage']:.4f}  "
+                f"Mean: {r['mean_width']:.4f}  "
+                f"Median: {r['median_width']:.4f}{marker}"
+            )
 
         results[acc] = acc_results
 
     # Save raw results
-    output_path = Path("outputs/gamma_ablation.npz")
+    output_path = Path("outputs/gamma_ablation_calval.npz")
     save_dict = {}
     for acc in [4, 8]:
         for key, vals in results[acc].items():
@@ -285,7 +364,8 @@ def main() -> None:
     for gamma in GAMMA_VALUES:
         r4 = results[4][f"gamma_{gamma}"]
         r8 = results[8][f"gamma_{gamma}"]
-        marker = r" $\dagger$" if gamma == 0.3 else ""
+        selected = gamma == chosen_gammas[4] or gamma == chosen_gammas[8]
+        marker = r" $\dagger$" if selected else ""
         print(f"        $\\gamma={gamma}${marker} & {r4['coverage']:.1%} & {r4['mean_width']:.3f} & {r4['median_width']:.3f} & {r8['coverage']:.1%} & {r8['mean_width']:.3f} & {r8['median_width']:.3f} \\\\")
 
     print(r"""        \bottomrule
@@ -308,7 +388,9 @@ def main() -> None:
         Method & Region & Coverage & Width & Coverage & Width \\
         \midrule""")
 
-    for method_key, label in [("uniform", "Uniform"), ("gamma_0.3", r"Adaptive ($\gamma{=}0.3$)")]:
+    # Use γ chosen for 4x (should match 8x in practice)
+    g = chosen_gammas[4]
+    for method_key, label in [("uniform", "Uniform"), (f"gamma_{g}", rf"Adaptive ($\gamma{{=}}" + str(g) + "$)")]:
         r4 = results[4][method_key]
         r8 = results[8][method_key]
         print(f"        {label} & Smooth & {r4['cov_smooth']:.1%} & {r4['width_smooth']:.3f} & {r8['cov_smooth']:.1%} & {r8['width_smooth']:.3f} \\\\")
@@ -322,6 +404,18 @@ def main() -> None:
     print(r"""        \bottomrule
     \end{tabular}
 \end{table}""")
+
+    # Summary
+    print("\n" + "=" * 70)
+    print("SUMMARY: γ selected on calibration-validation split (no test peeking)")
+    print("=" * 70)
+    for acc in [4, 8]:
+        g = chosen_gammas[acc]
+        r = results[acc][f"gamma_{g}"]
+        print(
+            f"  {acc}x: γ={g} | test cov={r['coverage']:.4f} "
+            f"median_w={r['median_width']:.4f} gap={r['gap']*100:+.1f}pp"
+        )
 
 
 if __name__ == "__main__":
