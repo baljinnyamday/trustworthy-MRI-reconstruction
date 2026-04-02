@@ -1,0 +1,26 @@
+{
+  "files.exclude": {
+    "**/*.aux": true,
+    "**/*.bbl": true,
+    "**/*.bcf": true,
+    "**/*.blg": true,
+    "**/*.fdb_latexmk": true,
+    "**/*.fls": true,
+    "**/*.lof": true,
+    "**/*.log": true,
+    "**/*.lot": true,
+    "**/*.out": true,
+    "**/*.run.xml": true,
+    "**/*.synctex.gz": true,
+    "**/*.toc": true,
+    "**/*-eps-converted-to.pdf": true
+  },
+  "search.exclude": {
+    "**/*.aux": true,
+    "**/*.fdb_latexmk": true,
+    "**/*.fls": true,
+    "**/*.log": true,
+    "**/*-eps-converted-to.pdf": true
+  },
+  "latex-workshop.formatting.latex": "latexindent"
+}

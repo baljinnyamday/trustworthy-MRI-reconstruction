@@ -1,0 +1,23 @@
+[project]
+name = "meds"
+version = "0.1.0"
+description = "Trustworthy AI in MRI Reconstruction"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "h5py>=3.16.0",
+    "matplotlib>=3.10.8",
+    "numpy>=2.4.3",
+    "torch>=2.5.0",
+    "torchvision>=0.20.0",
+    "scipy>=1.14.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.8.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

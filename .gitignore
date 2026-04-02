@@ -1,0 +1,48 @@
+# Editor / OS
+.cursor/
+.cursorignore
+.copilot/
+.DS_Store
+
+# Dataset: keep folder structure and READMEs, ignore data files
+dataset/**
+!dataset/**/
+!dataset/**/README.md
+
+# Python
+__pycache__/
+.ruff_cache/
+.venv/
+
+# Project outputs
+outputs/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# LaTeX build / tooling
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.fmt
+*.lof
+*.log
+*.lot
+*.out
+*.run.xml
+*.synctex
+*.synctex.gz
+*.toc
+*.xdv
+
+# epstopdf / similar
+*-eps-converted-to.pdf
+
+# latexmk
+.latexmkrc-temp
+.claude
